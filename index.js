@@ -10,14 +10,20 @@ const {
   StringSelectMenuBuilder,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  AttachmentBuilder,
+  PermissionsBitField
 } = require("discord.js");
 
+const { createCanvas } = require("@napi-rs/canvas");
 const fs = require("fs");
+
 const TOKEN = process.env.TOKEN;
+const COLOR = 0xFFFFFF;
+const DB_FILE = "./main-data.json";
 
 if (!TOKEN) {
-  console.log("❌ ضع TOKEN في متغيرات الاستضافة");
+  console.error("❌ TOKEN غير موجود في متغيرات الاستضافة");
   process.exit(1);
 }
 
@@ -25,61 +31,45 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Channel]
 });
 
-const COLOR = 0xFFFFFF;
-const DB_FILE = "./games-data.json";
+// ==========================================
+// DATABASE
+// ==========================================
 
-const defaultGames = {
-  xo: "XO",
-  roulette: "الروليت",
-  mafia: "مافيا",
+const defaultNames = {
+  games: "الألعاب",
   fastest: "الأسرع",
+  mafia: "مافيا",
   scramble: "تفكيك الكلمات",
+  xo: "XO",
   rps: "حجر ورقة مقص",
   guess: "خمن الرقم",
-  quiz: "أسئلة وأجوبة",
-  wheel: "عجلة الحظ"
+  quiz: "أسئلة وأجوبة"
 };
 
 let db = {
-  names: { ...defaultGames },
-  players: {},
-  mafia: {}
+  names: { ...defaultNames },
+  players: {}
 };
 
 if (fs.existsSync(DB_FILE)) {
   try {
-    const saved = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    const old = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
     db = {
-      ...db,
-      ...saved,
-      names: { ...defaultGames, ...(saved.names || {}) }
+      names: { ...defaultNames, ...(old.names || {}) },
+      players: old.players || {}
     };
   } catch (e) {
-    console.log("تعذر قراءة ملف البيانات، سيتم استخدام بيانات جديدة");
+    console.log("تعذر تحميل البيانات القديمة");
   }
 }
 
 function save() {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-}
-
-function embed(title, description) {
-  return new EmbedBuilder()
-    .setColor(COLOR)
-    .setTitle(title)
-    .setDescription(description)
-    .setFooter({ text: "MAIN GAMES" })
-    .setTimestamp();
-}
-
-function gameName(id) {
-  return db.names[id] || id;
 }
 
 function getPlayer(id) {
@@ -90,15 +80,129 @@ function getPlayer(id) {
 }
 
 function reward(id, points = 10) {
-  const player = getPlayer(id);
-  player.points += points;
-  player.wins++;
+  const p = getPlayer(id);
+  p.points += points;
+  p.wins++;
   save();
 }
 
 function isAdmin(member) {
-  return member.permissions.has("Administrator");
+  return member.permissions.has(
+    PermissionsBitField.Flags.Administrator
+  );
 }
+
+function makeEmbed(title, description) {
+  return new EmbedBuilder()
+    .setColor(COLOR)
+    .setTitle(title)
+    .setDescription(description)
+    .setFooter({ text: "MAIN GAMES" })
+    .setTimestamp();
+}
+
+// ==========================================
+// IMAGE GENERATOR
+// ==========================================
+
+function makeImage(title, subtitle, emoji = "🎮") {
+  const canvas = createCanvas(1000, 500);
+  const ctx = canvas.getContext("2d");
+
+  const gradient = ctx.createLinearGradient(0, 0, 1000, 500);
+  gradient.addColorStop(0, "#111827");
+  gradient.addColorStop(1, "#374151");
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1000, 500);
+
+  ctx.fillStyle = "rgba(255,255,255,0.07)";
+  ctx.beginPath();
+  ctx.arc(800, 100, 230, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(150, 450, 200, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(30, 30, 940, 440);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.font = "100px Arial";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillText(emoji, 500, 155);
+
+  ctx.font = "bold 65px Arial";
+  ctx.fillText(title, 500, 300);
+
+  ctx.font = "30px Arial";
+  ctx.fillStyle = "#D1D5DB";
+  ctx.fillText(subtitle, 500, 385);
+
+  ctx.font = "bold 24px Arial";
+  ctx.fillStyle = "#9CA3AF";
+  ctx.fillText("MAIN GAMES", 500, 435);
+
+  return canvas.toBuffer("image/png");
+}
+
+function makeWordImage(word) {
+  const canvas = createCanvas(1000, 500);
+  const ctx = canvas.getContext("2d");
+
+  const gradient = ctx.createLinearGradient(0, 0, 1000, 500);
+  gradient.addColorStop(0, "#111827");
+  gradient.addColorStop(1, "#4B5563");
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1000, 500);
+
+  ctx.strokeStyle = "#FFFFFF";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(30, 30, 940, 440);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.fillStyle = "#D1D5DB";
+  ctx.font = "bold 45px Arial";
+  ctx.fillText("MAIN | SPEED CHALLENGE", 500, 105);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 100px Arial";
+  ctx.fillText(word, 500, 270);
+
+  ctx.font = "30px Arial";
+  ctx.fillStyle = "#D1D5DB";
+  ctx.fillText("اكتب الكلمة بأسرع وقت!", 500, 390);
+
+  return canvas.toBuffer("image/png");
+}
+
+async function sendGameImage(channel, key, description, emoji) {
+  const title = db.names[key] || key;
+  const buffer = makeImage(title, description, emoji);
+
+  const attachment = new AttachmentBuilder(buffer, {
+    name: `${key}.png`
+  });
+
+  const e = makeEmbed(title, description)
+    .setImage(`attachment://${key}.png`);
+
+  return channel.send({
+    embeds: [e],
+    files: [attachment]
+  });
+}
+
+// ==========================================
+// GAME DATA
+// ==========================================
 
 const words = [
   "مدرسة",
@@ -112,466 +216,651 @@ const words = [
   "هاتف",
   "مغامرة",
   "صداقة",
-  "بطولة"
+  "بطولة",
+  "قمر",
+  "نجمة",
+  "بحر",
+  "قهوة",
+  "كتاب",
+  "مفتاح",
+  "سحابة",
+  "حديقة"
 ];
 
 const questions = [
-  { q: "ما عاصمة المملكة العربية السعودية؟", a: "الرياض" },
+  { q: "ما عاصمة السعودية؟", a: "الرياض" },
   { q: "كم عدد أيام الأسبوع؟", a: "7" },
-  { q: "ما أكبر كوكب في المجموعة الشمسية؟", a: "المشتري" },
+  { q: "ما أكبر كوكب؟", a: "المشتري" },
   { q: "ما الحيوان المعروف بسفينة الصحراء؟", a: "الجمل" },
   { q: "كم عدد حروف اللغة العربية؟", a: "28" },
   { q: "ما عاصمة اليابان؟", a: "طوكيو" },
   { q: "ما الكوكب الأحمر؟", a: "المريخ" },
-  { q: "كم يساوي 9 × 9؟", a: "81" }
+  { q: "كم يساوي 9 × 9؟", a: "81" },
+  { q: "ما أسرع حيوان بري؟", a: "الفهد" }
 ];
 
 const activeGames = new Map();
+const mafiaGames = new Map();
 
-function shuffleWord(word) {
-  let result = word;
-  while (result === word && word.length > 2) {
-    result = word.split("").sort(() => Math.random() - 0.5).join("");
-  }
-  return result;
+function randomItem(array) {
+  return array[Math.floor(Math.random() * array.length)];
 }
 
-function menuRow() {
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("main_games_menu")
-      .setPlaceholder("اختر اللعبة التي تريد لعبها")
-      .addOptions(
-        Object.entries(db.names).map(([id, name]) => ({
+function shuffleWord(word) {
+  const chars = word.split("");
+  let shuffled = word;
+
+  while (shuffled === word) {
+    shuffled = [...chars]
+      .sort(() => Math.random() - 0.5)
+      .join("");
+  }
+
+  return shuffled;
+}
+
+function normalize(text) {
+  return text
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/\s/g, "")
+    .trim();
+}
+
+// ==========================================
+// GAMES MENU
+// ==========================================
+
+function gamesMenu() {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("main_select_game")
+    .setPlaceholder("🎮 اختر اللعبة")
+    .addOptions(
+      Object.entries(db.names)
+        .filter(([id]) => id !== "games")
+        .map(([id, name]) => ({
           label: name.slice(0, 100),
           value: id,
-          description: `العب ${name}`.slice(0, 100)
+          description: `ابدأ لعبة ${name}`.slice(0, 100)
         }))
-      )
-  );
+    );
+
+  return new ActionRowBuilder().addComponents(select);
 }
 
 async function showGames(message) {
-  const description = Object.entries(db.names)
-    .map(([id, name], i) => `**${i + 1}.** ${name}`)
-    .join("\n");
+  const entries = Object.entries(db.names)
+    .filter(([id]) => id !== "games");
 
-  await message.reply({
-    embeds: [
-      embed(
-        "🎮 ألعاب MAIN",
-        `اختر لعبة من القائمة أو استخدم أوامر الألعاب.\n\n${description}\n\n**الأوامر:**\n\`روليت\` - \`مافيا بدء\` - \`اسرع\` - \`تفكيك\` - \`xo\` - \`نقاط\` - \`توب\``
-      )
-    ],
-    components: [menuRow()]
-  });
-}
+  const description = entries.map(([id, name]) => {
+    const icons = {
+      fastest: "⚡",
+      mafia: "🕵️",
+      scramble: "🔤",
+      xo: "❌",
+      rps: "✂️",
+      guess: "🎯",
+      quiz: "❓"
+    };
 
-// ========================================
-// XP / LEADERBOARD
-// ========================================
+    return `${icons[id] || "🎮"} **${name}**`;
+  }).join("\n");
 
-async function leaderboard(message) {
-  const sorted = Object.entries(db.players)
-    .sort((a, b) => b[1].points - a[1].points)
-    .slice(0, 10);
-
-  const description = sorted.length
-    ? sorted.map(([id, p], i) =>
-        `**${i + 1}.** <@${id}> — ${p.points} نقطة | ${p.wins} فوز`
-      ).join("\n")
-    : "لا يوجد لاعبون حتى الآن.";
-
-  message.reply({
-    embeds: [embed("🏆 أفضل لاعبي MAIN", description)]
-  });
-}
-
-// ========================================
-// ROULETTE
-// ========================================
-
-async function roulette(message) {
-  const choices = [
-    "🔴 الأحمر",
-    "⚫ الأسود",
-    "🟢 الأخضر",
-    "⭐ نجمة",
-    "💎 الماسة"
-  ];
-
-  const result = choices[Math.floor(Math.random() * choices.length)];
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("roulette_spin")
-      .setLabel("لف العجلة")
-      .setEmoji("🎰")
-      .setStyle(ButtonStyle.Secondary)
+  const attachment = new AttachmentBuilder(
+    makeImage("MAIN GAMES", "اختر لعبتك وابدأ التحدي", "🎮"),
+    { name: "main-games.png" }
   );
 
-  message.reply({
-    embeds: [
-      embed(
-        gameName("roulette"),
-        `اضغط الزر لتدوير عجلة الحظ!\n\n${result}`
-      )
-    ],
-    components: [row]
+  const e = makeEmbed(
+    "🎮 MAIN GAMES",
+    `مرحباً بك في ألعاب MAIN!\n\n${description}\n\nاختر اللعبة من القائمة بالأسفل.`
+  ).setImage("attachment://main-games.png");
+
+  return message.reply({
+    embeds: [e],
+    files: [attachment],
+    components: [gamesMenu()]
   });
 }
 
-// ========================================
+// ==========================================
 // FASTEST GAME
-// ========================================
+// ==========================================
 
-async function fastest(message) {
-  const question = questions[
-    Math.floor(Math.random() * questions.length)
-  ];
-
+async function startFastest(message) {
   const id = `fastest_${message.channel.id}`;
 
   if (activeGames.has(id)) {
-    return message.reply("هناك تحدٍ شغال بالفعل في هذه الروم.");
+    return message.reply("⚠️ يوجد تحدي أسرع شغال بالفعل!");
   }
 
-  activeGames.set(id, {
-    answer: question.a.toLowerCase(),
-    type: "fastest"
+  const word = randomItem(words);
+
+  const attachment = new AttachmentBuilder(
+    makeWordImage(word),
+    { name: "speed-word.png" }
+  );
+
+  const game = {
+    type: "fastest",
+    answer: normalize(word),
+    channel: message.channel,
+    message: null
+  };
+
+  activeGames.set(id, game);
+
+  const e = makeEmbed(
+    "⚡ " + db.names.fastest,
+    "اكتب الكلمة الموجودة في الصورة بأسرع وقت!\n\n⏱️ مدة التحدي: **15 ثانية**\n🏆 أول إجابة صحيحة تفوز بـ **15 نقطة**."
+  ).setImage("attachment://speed-word.png");
+
+  const sent = await message.channel.send({
+    embeds: [e],
+    files: [attachment]
   });
 
-  message.channel.send({
-    embeds: [
-      embed(
-        gameName("fastest"),
-        `⚡ **أول شخص يجيب يفوز!**\n\n${question.q}\n\nلديكم 30 ثانية!`
-      )
-    ]
-  });
+  game.message = sent;
 
-  setTimeout(() => {
-    if (activeGames.has(id)) {
-      activeGames.delete(id);
-      message.channel.send(`انتهى التحدي! الإجابة كانت: **${question.a}**`);
-    }
-  }, 30000);
+  setTimeout(async () => {
+    if (!activeGames.has(id)) return;
+
+    activeGames.delete(id);
+
+    await message.channel.send({
+      embeds: [
+        makeEmbed(
+          "⏰ انتهى تحدي الأسرع",
+          "انتهى الوقت ولم يتمكن أحد من الفوز!"
+        )
+      ]
+    });
+  }, 15000);
 }
 
-// ========================================
-// WORD SCRAMBLE
-// ========================================
+// ==========================================
+// SCRAMBLE GAME
+// ==========================================
 
-async function scramble(message) {
-  const word = words[Math.floor(Math.random() * words.length)];
-  const mixed = shuffleWord(word);
+async function startScramble(message) {
   const id = `scramble_${message.channel.id}`;
 
   if (activeGames.has(id)) {
-    return message.reply("يوجد تحدي تفكيك كلمات شغال بالفعل.");
+    return message.reply("يوجد تحدي شغال بالفعل.");
   }
 
+  const word = randomItem(words);
+  const mixed = shuffleWord(word);
+
+  const attachment = new AttachmentBuilder(
+    makeWordImage(mixed.split("").join(" | ")),
+    { name: "scramble.png" }
+  );
+
   activeGames.set(id, {
-    answer: word.toLowerCase(),
-    type: "scramble"
+    type: "scramble",
+    answer: normalize(word)
   });
 
-  message.channel.send({
-    embeds: [
-      embed(
-        gameName("scramble"),
-        `🔤 رتب الحروف واكتشف الكلمة!\n\n**${mixed.split("").join(" | ")}**\n\nأول إجابة صحيحة تفوز بـ 15 نقطة!`
-      )
-    ]
+  const e = makeEmbed(
+    db.names.scramble,
+    "رتب الحروف الموجودة في الصورة واكتشف الكلمة!\n\n🏆 أول إجابة صحيحة تفوز بـ 15 نقطة.\n⏱️ المدة: 45 ثانية."
+  ).setImage("attachment://scramble.png");
+
+  await message.channel.send({
+    embeds: [e],
+    files: [attachment]
   });
 
   setTimeout(() => {
-    if (activeGames.has(id)) {
-      activeGames.delete(id);
-      message.channel.send(`انتهى التحدي! الكلمة كانت: **${word}**`);
-    }
+    if (!activeGames.has(id)) return;
+    activeGames.delete(id);
+    message.channel.send("⏰ انتهى التحدي!");
   }, 45000);
 }
 
-// ========================================
+// ==========================================
 // GUESS NUMBER
-// ========================================
+// ==========================================
 
-async function guessNumber(message) {
-  const number = Math.floor(Math.random() * 10) + 1;
+async function startGuess(message) {
   const id = `guess_${message.channel.id}`;
 
   if (activeGames.has(id)) {
     return message.reply("هناك لعبة تخمين شغالة بالفعل.");
   }
 
+  const number = Math.floor(Math.random() * 10) + 1;
+
   activeGames.set(id, {
-    answer: String(number),
-    type: "guess"
+    type: "guess",
+    answer: String(number)
   });
 
-  message.reply({
-    embeds: [
-      embed(
-        gameName("guess"),
-        "🎯 خمن الرقم من 1 إلى 10!\nأول شخص يكتب الرقم الصحيح يفوز بـ 10 نقاط."
-      )
-    ]
-  });
+  await sendGameImage(
+    message.channel,
+    "guess",
+    "خمن الرقم من 1 إلى 10!\nأول شخص يكتب الرقم الصحيح يفوز بـ 10 نقاط.",
+    "🎯"
+  );
 
   setTimeout(() => {
-    if (activeGames.has(id)) {
-      activeGames.delete(id);
-      message.channel.send(`انتهت اللعبة! الرقم كان ${number}`);
-    }
+    if (!activeGames.has(id)) return;
+    activeGames.delete(id);
+    message.channel.send("⏰ انتهت اللعبة!");
   }, 30000);
 }
 
-// ========================================
+// ==========================================
 // QUIZ
-// ========================================
+// ==========================================
 
-async function quiz(message) {
-  const q = questions[Math.floor(Math.random() * questions.length)];
+async function startQuiz(message) {
   const id = `quiz_${message.channel.id}`;
 
   if (activeGames.has(id)) {
     return message.reply("هناك سؤال شغال بالفعل.");
   }
 
+  const q = randomItem(questions);
+
   activeGames.set(id, {
-    answer: q.a.toLowerCase(),
-    type: "quiz"
+    type: "quiz",
+    answer: normalize(q.a)
   });
 
-  message.reply({
-    embeds: [
-      embed(gameName("quiz"), `❓ ${q.q}\n\nأول إجابة صحيحة تفوز!`)
-    ]
-  });
+  await sendGameImage(
+    message.channel,
+    "quiz",
+    `❓ ${q.q}\n\nأول إجابة صحيحة تفوز بـ 10 نقاط.\n⏱️ المدة: 30 ثانية.`,
+    "❓"
+  );
 
   setTimeout(() => {
-    if (activeGames.has(id)) {
-      activeGames.delete(id);
-      message.channel.send(`انتهى السؤال! الإجابة: **${q.a}**`);
-    }
+    if (!activeGames.has(id)) return;
+    activeGames.delete(id);
+    message.channel.send(`انتهى السؤال! الإجابة: **${q.a}**`);
   }, 30000);
 }
 
-// ========================================
+// ==========================================
 // XO
-// ========================================
+// ==========================================
+
+function xoRows(game) {
+  const rows = [];
+
+  for (let r = 0; r < 3; r++) {
+    const row = new ActionRowBuilder();
+
+    for (let c = 0; c < 3; c++) {
+      const i = r * 3 + c;
+
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`xo:${game.channelId}:${i}`)
+          .setLabel(game.board[i] || "・")
+          .setStyle(
+            game.board[i] === "❌"
+              ? ButtonStyle.Danger
+              : game.board[i] === "⭕"
+                ? ButtonStyle.Primary
+                : ButtonStyle.Secondary
+          )
+          .setDisabled(
+            Boolean(game.board[i]) || game.finished || game.players.length < 2
+          )
+      );
+    }
+
+    rows.push(row);
+  }
+
+  if (game.players.length === 1 && !game.finished) {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`xojoin:${game.channelId}`)
+          .setLabel("انضم للمباراة")
+          .setStyle(ButtonStyle.Success)
+      )
+    );
+  }
+
+  return rows;
+}
+
+function xoWinner(board) {
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+
+  for (const line of lines) {
+    if (
+      board[line[0]] &&
+      board[line[0]] === board[line[1]] &&
+      board[line[1]] === board[line[2]]
+    ) {
+      return board[line[0]];
+    }
+  }
+
+  return null;
+}
 
 async function startXO(message) {
-  const id = `xo_${message.channel.id}`;
+  const id = message.channel.id;
 
-  if (activeGames.has(id)) {
-    return message.reply("هناك مباراة XO شغالة بالفعل.");
+  if (activeGames.has(`xo_${id}`)) {
+    return message.reply("هناك مباراة XO شغالة.");
   }
 
   const game = {
-    type: "xo",
+    channelId: id,
     players: [message.author.id],
     board: Array(9).fill(null),
     turn: 0,
-    finished: false
+    finished: false,
+    marks: ["❌", "⭕"]
   };
 
-  activeGames.set(id, game);
+  activeGames.set(`xo_${id}`, game);
 
-  const row = new ActionRowBuilder();
+  const attachment = new AttachmentBuilder(
+    makeImage(db.names.xo, "تحدي بين لاعبين", "❌"),
+    { name: "xo.png" }
+  );
 
-  for (let i = 0; i < 3; i++) {
-    row.addComponents(
+  const sent = await message.reply({
+    embeds: [
+      makeEmbed(
+        db.names.xo,
+        `اللاعب الأول: ${message.author}\n\nينتظر لاعباً آخر للانضمام.`
+      ).setImage("attachment://xo.png")
+    ],
+    files: [attachment],
+    components: xoRows(game)
+  });
+
+  game.messageId = sent.id;
+}
+
+// ==========================================
+// ROCK PAPER SCISSORS
+// ==========================================
+
+async function startRPS(message) {
+  const row = new ActionRowBuilder().addComponents(
+    ["حجر", "ورقة", "مقص"].map(choice =>
       new ButtonBuilder()
-        .setCustomId(`xo_${id}_${i}`)
-        .setLabel(" ")
+        .setCustomId(`rps:${choice}`)
+        .setLabel(choice)
         .setStyle(ButtonStyle.Secondary)
-    );
-  }
-
-  const rows = [row];
-
-  for (let r = 1; r < 3; r++) {
-    const newRow = new ActionRowBuilder();
-    for (let c = 0; c < 3; c++) {
-      newRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`xo_${id}_${r * 3 + c}`)
-          .setLabel(" ")
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
-    rows.push(newRow);
-  }
-
-  rows.push(
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`xo_join_${message.channel.id}`)
-        .setLabel("انضم للمباراة")
-        .setStyle(ButtonStyle.Success)
     )
   );
 
-  const msg = await message.reply({
-    embeds: [
-      embed(
-        "❌ XO",
-        `اللاعب الأول: ${message.author}\nينتظر لاعباً آخر للانضمام.`
-      )
-    ],
-    components: rows
-  });
+  const attachment = new AttachmentBuilder(
+    makeImage(db.names.rps, "اختر حركتك", "✂️"),
+    { name: "rps.png" }
+  );
 
-  game.messageId = msg.id;
-  game.messageChannel = message.channel.id;
+  return message.reply({
+    embeds: [
+      makeEmbed(db.names.rps, "اختر حجر أو ورقة أو مقص!")
+        .setImage("attachment://rps.png")
+    ],
+    files: [attachment],
+    components: [row]
+  });
 }
 
-// ========================================
+// ==========================================
 // MAFIA
-// ========================================
+// ==========================================
 
-async function mafia(message, args) {
-  const guildId = message.guild.id;
-  const channelId = message.channel.id;
+async function startMafiaJoin(message) {
+  const id = message.guild.id;
 
-  if (!db.mafia[guildId]) {
-    db.mafia[guildId] = {
+  if (!mafiaGames.has(id)) {
+    mafiaGames.set(id, {
       players: [],
       running: false,
-      channelId
-    };
+      votes: {},
+      roles: {},
+      channelId: message.channel.id
+    });
   }
 
-  const game = db.mafia[guildId];
+  const game = mafiaGames.get(id);
 
-  if (args === "بدء") {
-    if (game.running) {
-      return message.reply("هناك لعبة مافيا شغالة.");
+  if (game.running) {
+    return message.reply("اللعبة بدأت بالفعل.");
+  }
+
+  if (game.players.includes(message.author.id)) {
+    return message.reply("أنت منضم بالفعل.");
+  }
+
+  game.players.push(message.author.id);
+  game.channelId = message.channel.id;
+
+  const attachment = new AttachmentBuilder(
+    makeImage(db.names.mafia, "انضم إلى اللعبة", "🕵️"),
+    { name: "mafia.png" }
+  );
+
+  return message.channel.send({
+    embeds: [
+      makeEmbed(
+        db.names.mafia,
+        `تم انضمام ${message.author}!\n\n👥 عدد اللاعبين: **${game.players.length}**\n\nللبدء: \`مافيا بدء\``
+      ).setImage("attachment://mafia.png")
+    ],
+    files: [attachment]
+  });
+}
+
+async function startMafia(message) {
+  const id = message.guild.id;
+  const game = mafiaGames.get(id);
+
+  if (!game || game.players.length < 4) {
+    return message.reply("تحتاج إلى 4 لاعبين على الأقل. اكتب `مافيا انضمام`.");
+  }
+
+  if (game.running) {
+    return message.reply("اللعبة بدأت بالفعل.");
+  }
+
+  game.running = true;
+  game.votes = {};
+  game.roles = {};
+
+  const shuffled = [...game.players].sort(() => Math.random() - 0.5);
+  const count = Math.max(1, Math.floor(shuffled.length / 4));
+
+  shuffled.forEach((player, index) => {
+    game.roles[player] = index < count ? "مافيا" : "مواطن";
+  });
+
+  for (const player of shuffled) {
+    try {
+      const user = await client.users.fetch(player);
+      await user.send({
+        embeds: [
+          makeEmbed(
+            "🕵️ دورك في مافيا MAIN",
+            `دورك السري هو: **${game.roles[player]}**\nلا تكشف دورك للآخرين!`
+          )
+        ]
+      });
+    } catch (error) {
+      // قد تكون الرسائل الخاصة مغلقة
     }
+  }
 
-    if (game.players.length < 4) {
-      return message.reply("تحتاج 4 لاعبين على الأقل. اكتب `مافيا انضمام` للانضمام.");
-    }
+  const channel = await client.channels.fetch(game.channelId);
 
-    game.running = true;
-    game.channelId = channelId;
+  await channel.send({
+    embeds: [
+      makeEmbed(
+        "🕵️ بدأت لعبة المافيا",
+        `عدد اللاعبين: **${game.players.length}**\nتم إرسال الأدوار بالخاص.\n\nناقشوا فيما بينكم، ثم استخدموا:\n\`تصويت @العضو\``
+      )
+    ]
+  });
+}
 
-    const shuffled = [...game.players].sort(() => Math.random() - 0.5);
-    const mafiaCount = Math.max(1, Math.floor(shuffled.length / 4));
+async function mafiaVote(message) {
+  const game = mafiaGames.get(message.guild.id);
+  const target = message.mentions.users.first();
 
-    game.roles = {};
+  if (!game || !game.running || !target) {
+    return message.reply("استخدم: `تصويت @العضو` أثناء لعبة المافيا.");
+  }
 
-    shuffled.forEach((id, index) => {
-      game.roles[id] = index < mafiaCount ? "مافيا" : "مواطن";
-    });
+  if (!game.players.includes(message.author.id) ||
+      !game.players.includes(target.id) ||
+      target.id === message.author.id) {
+    return message.reply("التصويت متاح للاعبين المشاركين فقط.");
+  }
 
-    save();
+  game.votes[message.author.id] = target.id;
 
-    for (const id of shuffled) {
-      try {
-        const user = await client.users.fetch(id);
-        await user.send({
-          embeds: [
-            embed(
-              "🕵️ دورك في مافيا MAIN",
-              `دورك هو: **${game.roles[id]}**\nلا تكشف دورك للآخرين!`
-            )
-          ]
-        });
-      } catch (e) {}
-    }
+  const voted = Object.keys(game.votes).length;
+
+  if (voted < game.players.length) {
+    return message.reply(
+      `تم تسجيل تصويتك ضد ${target}.\nالتصويت: ${voted}/${game.players.length}`
+    );
+  }
+
+  const counts = {};
+
+  Object.values(game.votes).forEach(id => {
+    counts[id] = (counts[id] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length > 1 && sorted[0][1] === sorted[1][1]) {
+    game.votes = {};
+    return message.channel.send("🤝 تعادل في التصويت! أعيدوا التصويت.");
+  }
+
+  const eliminated = sorted[0][0];
+  const role = game.roles[eliminated];
+
+  game.players = game.players.filter(id => id !== eliminated);
+  delete game.roles[eliminated];
+  game.votes = {};
+
+  const mafiaLeft = Object.values(game.roles).filter(
+    role => role === "مافيا"
+  ).length;
+
+  const citizensLeft = Object.values(game.roles).filter(
+    role => role === "مواطن"
+  ).length;
+
+  if (mafiaLeft === 0 || mafiaLeft >= citizensLeft) {
+    game.running = false;
+
+    const winner = mafiaLeft === 0 ? "المواطنون" : "المافيا";
 
     return message.channel.send({
       embeds: [
-        embed(
-          "🕵️ بدأت لعبة المافيا",
-          `عدد اللاعبين: **${shuffled.length}**\nتم إرسال الأدوار بشكل خاص.\n\nالآن ناقشوا واستخدموا التصويت لكشف المافيا!\n\nللتصويت: \`تصويت @الشخص\``
+        makeEmbed(
+          "🏆 انتهت لعبة المافيا",
+          `تم إخراج <@${eliminated}> وكان دوره **${role}**.\n\nالفائز: **${winner}**`
         )
       ]
     });
   }
 
-  if (args === "انضمام") {
-    if (game.running) {
-      return message.reply("اللعبة بدأت بالفعل.");
-    }
-
-    if (game.players.includes(message.author.id)) {
-      return message.reply("أنت منضم بالفعل.");
-    }
-
-    game.players.push(message.author.id);
-    save();
-
-    return message.reply({
-      embeds: [
-        embed(
-          "🕵️ مافيا MAIN",
-          `تم انضمام ${message.author}!\nعدد اللاعبين: **${game.players.length}**`
-        )
-      ]
-    });
-  }
-
-  if (args === "إيقاف") {
-    if (!isAdmin(message.member)) {
-      return message.reply("هذا الأمر للإدارة فقط.");
-    }
-
-    db.mafia[guildId] = {
-      players: [],
-      running: false,
-      channelId
-    };
-
-    save();
-    return message.reply("تم إيقاف لعبة المافيا.");
-  }
-
-  message.reply({
+  return message.channel.send({
     embeds: [
-      embed(
-        "🕵️ أوامر المافيا",
-        "`مافيا انضمام`\n`مافيا بدء`\n`مافيا إيقاف`"
+      makeEmbed(
+        "🗳️ نتيجة التصويت",
+        `تم إخراج <@${eliminated}>.\nدوره كان: **${role}**.\n\nالمافيا المتبقية: ${mafiaLeft}\nالمواطنون المتبقون: ${citizensLeft}`
       )
     ]
   });
 }
 
-// ========================================
-// RENAME GAME
-// ========================================
+// ==========================================
+// LEADERBOARD
+// ==========================================
 
-async function renameGame(message) {
-  if (!isAdmin(message.member)) {
-    return message.reply("❌ هذا الأمر للإدارة فقط.");
-  }
+async function showPoints(message) {
+  const p = getPlayer(message.author.id);
 
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("rename_game_select")
-    .setPlaceholder("اختر اللعبة لتغيير اسمها")
-    .addOptions(
-      Object.entries(db.names).map(([id, name]) => ({
-        label: name.slice(0, 100),
-        value: id
-      }))
-    );
-
-  message.reply({
+  return message.reply({
     embeds: [
-      embed("⚙️ تعديل أسماء الألعاب", "اختر اللعبة التي تريد تغيير اسمها.")
-    ],
-    components: [
-      new ActionRowBuilder().addComponents(menu)
+      makeEmbed(
+        "⭐ نقاطك في MAIN",
+        `اللاعب: ${message.author}\n\nالنقاط: **${p.points}**\nالانتصارات: **${p.wins}**`
+      )
     ]
   });
 }
 
-// ========================================
+async function showTop(message) {
+  const sorted = Object.entries(db.players)
+    .sort((a, b) => b[1].points - a[1].points)
+    .slice(0, 10);
+
+  const description = sorted.length
+    ? sorted.map(([id, p], i) =>
+        `**${i + 1}.** <@${id}> — ${p.points} نقطة`
+      ).join("\n")
+    : "لا يوجد لاعبون حتى الآن.";
+
+  return message.reply({
+    embeds: [makeEmbed("🏆 أفضل لاعبي MAIN", description)]
+  });
+}
+
+// ==========================================
+// RENAME GAMES
+// ==========================================
+
+async function renameMenu(message) {
+  if (!isAdmin(message.member)) {
+    return message.reply("هذا الأمر للإدارة فقط.");
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("main_rename_select")
+    .setPlaceholder("اختر اللعبة التي تريد تغيير اسمها")
+    .addOptions(
+      Object.entries(db.names)
+        .filter(([id]) => id !== "games")
+        .map(([id, name]) => ({
+          label: name.slice(0, 100),
+          value: id
+        }))
+    );
+
+  return message.reply({
+    embeds: [
+      makeEmbed(
+        "⚙️ تعديل أسماء الألعاب",
+        "اختر اللعبة، ثم اكتب الاسم الجديد."
+      )
+    ],
+    components: [
+      new ActionRowBuilder().addComponents(select)
+    ]
+  });
+}
+
+// ==========================================
 // MESSAGE COMMANDS
-// ========================================
+// ==========================================
 
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
@@ -580,22 +869,25 @@ client.on("messageCreate", async message => {
   const lower = content.toLowerCase();
 
   try {
-    // Answer active games
+    // Check active game answers
     for (const [id, game] of activeGames.entries()) {
-      if (
-        id.endsWith(message.channel.id) &&
-        game.type !== "xo" &&
-        lower === game.answer
-      ) {
+      if (!id.endsWith(message.channel.id)) continue;
+      if (!["fastest", "scramble", "guess", "quiz"].includes(game.type)) continue;
+
+      if (normalize(content) === game.answer) {
         activeGames.delete(id);
-        const points = game.type === "scramble" ? 15 : 10;
+
+        const points = game.type === "fastest" || game.type === "scramble"
+          ? 15
+          : 10;
+
         reward(message.author.id, points);
 
         return message.reply({
           embeds: [
-            embed(
-              "🏆 إجابة صحيحة!",
-              `${message.author} فاز بـ **${points} نقطة**!\nمجموع نقاطه: **${getPlayer(message.author.id).points}**`
+            makeEmbed(
+              "🏆 فائز التحدي!",
+              `${message.author} أجاب بشكل صحيح!\n\n⭐ حصل على **${points} نقطة**.\nمجموع نقاطه: **${getPlayer(message.author.id).points}**`
             )
           ]
         });
@@ -606,132 +898,97 @@ client.on("messageCreate", async message => {
       return showGames(message);
     }
 
-    if (lower === "روليت" || lower === "الروليت") {
-      return roulette(message);
-    }
-
     if (lower === "اسرع" || lower === "الأسرع") {
-      return fastest(message);
+      return startFastest(message);
     }
 
     if (lower === "تفكيك" || lower === "تفكيك كلمات") {
-      return scramble(message);
+      return startScramble(message);
     }
 
     if (lower === "xo" || lower === "اكس او") {
       return startXO(message);
     }
 
-    if (lower.startsWith("مافيا")) {
-      return mafia(message, content.split(/\s+/).slice(1).join(" "));
+    if (lower === "حجر ورقة مقص") {
+      return startRPS(message);
     }
 
     if (lower === "خمن" || lower === "خمن الرقم") {
-      return guessNumber(message);
+      return startGuess(message);
     }
 
-    if (lower === "سؤال" || lower === "اسئلة") {
-      return quiz(message);
+    if (lower === "سؤال" || lower === "اسئلة" || lower === "أسئلة") {
+      return startQuiz(message);
     }
 
-    if (lower === "عجلة الحظ") {
-      return roulette(message);
+    if (lower === "مافيا انضمام") {
+      return startMafiaJoin(message);
     }
 
-    if (lower === "تعديل لعبة" || lower === "تعديل الالعاب") {
-      return renameGame(message);
+    if (lower === "مافيا بدء") {
+      return startMafia(message);
     }
 
-    if (lower === "نقاط") {
-      const p = getPlayer(message.author.id);
+    if (lower === "مافيا إيقاف" || lower === "مافيا ايقاف") {
+      if (!isAdmin(message.member)) {
+        return message.reply("هذا الأمر للإدارة فقط.");
+      }
 
-      return message.reply({
-        embeds: [
-          embed(
-            "⭐ نقاطك",
-            `اللاعب: ${message.author}\nالنقاط: **${p.points}**\nالانتصارات: **${p.wins}**`
-          )
-        ]
-      });
-    }
-
-    if (lower === "توب" || lower === "المتصدرين") {
-      return leaderboard(message);
+      mafiaGames.delete(message.guild.id);
+      return message.reply("تم إيقاف لعبة المافيا.");
     }
 
     if (lower.startsWith("تصويت ")) {
-      const game = db.mafia[message.guild.id];
-      const target = message.mentions.users.first();
+      return mafiaVote(message);
+    }
 
-      if (!game || !game.running || !target) {
-        return message.reply("استخدم: `تصويت @الشخص` أثناء لعبة المافيا.");
-      }
+    if (lower === "نقاط") {
+      return showPoints(message);
+    }
 
-      if (!game.players.includes(message.author.id) ||
-          !game.players.includes(target.id) ||
-          target.id === message.author.id) {
-        return message.reply("التصويت متاح للاعبين المشاركين فقط.");
-      }
+    if (lower === "توب" || lower === "المتصدرين") {
+      return showTop(message);
+    }
 
-      if (!game.votes) game.votes = {};
-      game.votes[message.author.id] = target.id;
-      save();
-
-      return message.reply(`تم تسجيل تصويتك ضد ${target}.`);
+    if (lower === "تعديل لعبة" || lower === "تعديل الالعاب") {
+      return renameMenu(message);
     }
 
   } catch (error) {
-    console.error(error);
-    message.reply("حدث خطأ أثناء تنفيذ اللعبة.");
+    console.error("Message error:", error);
+    message.reply("حدث خطأ أثناء تنفيذ الأمر.").catch(() => {});
   }
 });
 
-// ========================================
+// ==========================================
 // INTERACTIONS
-// ========================================
+// ==========================================
 
 client.on("interactionCreate", async interaction => {
   try {
-    // Game menu
+    // GAME MENU
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId === "main_games_menu") {
-        const id = interaction.values[0];
 
+      if (interaction.customId === "main_select_game") {
         const commands = {
-          roulette: "روليت",
-          mafia: "مافيا",
           fastest: "اسرع",
+          mafia: "مافيا انضمام",
           scramble: "تفكيك",
           xo: "xo",
+          rps: "حجر ورقة مقص",
           guess: "خمن",
-          quiz: "سؤال",
-          wheel: "عجلة الحظ",
-          rps: "حجر ورقة مقص"
+          quiz: "سؤال"
         };
 
-        if (id === "rps") {
-          const row = new ActionRowBuilder().addComponents(
-            ["حجر", "ورقة", "مقص"].map(choice =>
-              new ButtonBuilder()
-                .setCustomId(`rps_${choice}`)
-                .setLabel(choice)
-                .setStyle(ButtonStyle.Secondary)
-            )
-          );
-
-          return interaction.reply({
-            embeds: [embed(gameName("rps"), "اختر اختيارك!")],
-            components: [row]
-          });
-        }
-
         return interaction.reply({
-          content: `ابدأ اللعبة بكتابة: **${commands[id] || "العاب"}**`,
+          content: `اكتب الأمر التالي في الروم لبدء اللعبة:\n**${commands[interaction.values[0]]}**`,
           ephemeral: true
         });
       }
 
-      if (interaction.customId === "rename_game_select") {
+      // RENAME MENU
+      if (interaction.customId === "main_rename_select") {
         if (!isAdmin(interaction.member)) {
           return interaction.reply({
             content: "ليس لديك صلاحية.",
@@ -742,12 +999,12 @@ client.on("interactionCreate", async interaction => {
         const id = interaction.values[0];
 
         const modal = new ModalBuilder()
-          .setCustomId(`rename_modal_${id}`)
+          .setCustomId(`main_rename_${id}`)
           .setTitle("تغيير اسم اللعبة");
 
         const input = new TextInputBuilder()
-          .setCustomId("new_game_name")
-          .setLabel("الاسم الجديد")
+          .setCustomId("new_name")
+          .setLabel("اكتب الاسم الجديد")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(80)
@@ -761,10 +1018,10 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    // Rename modal
+    // RENAME MODAL
     if (
       interaction.isModalSubmit() &&
-      interaction.customId.startsWith("rename_modal_")
+      interaction.customId.startsWith("main_rename_")
     ) {
       if (!isAdmin(interaction.member)) {
         return interaction.reply({
@@ -773,10 +1030,10 @@ client.on("interactionCreate", async interaction => {
         });
       }
 
-      const id = interaction.customId.replace("rename_modal_", "");
-      const name = interaction.fields.getTextInputValue("new_game_name").trim();
+      const id = interaction.customId.replace("main_rename_", "");
+      const name = interaction.fields.getTextInputValue("new_name").trim();
 
-      if (!name || !db.names[id]) {
+      if (!db.names[id] || !name) {
         return interaction.reply({
           content: "اسم غير صالح.",
           ephemeral: true
@@ -787,60 +1044,40 @@ client.on("interactionCreate", async interaction => {
       save();
 
       return interaction.reply({
-        embeds: [
-          embed(
-            "✅ تم تغيير الاسم",
-            `تم تغيير اسم اللعبة إلى **${name}** بنجاح.`
-          )
-        ],
+        content: `✅ تم تغيير اسم اللعبة إلى **${name}** وحفظه.`,
         ephemeral: true
       });
     }
 
-    // Roulette button
+    // ROCK PAPER SCISSORS
     if (
       interaction.isButton() &&
-      interaction.customId === "roulette_spin"
+      interaction.customId.startsWith("rps:")
     ) {
-      const choices = ["🔴 الأحمر", "⚫ الأسود", "🟢 الأخضر", "⭐ النجمة", "💎 الماسة"];
-      const result = choices[Math.floor(Math.random() * choices.length)];
-
-      return interaction.reply({
-        embeds: [
-          embed("🎰 نتيجة الروليت", `النتيجة: **${result}**`)
-        ],
-        ephemeral: true
-      });
-    }
-
-    // Rock paper scissors
-    if (
-      interaction.isButton() &&
-      interaction.customId.startsWith("rps_")
-    ) {
-      const userChoice = interaction.customId.replace("rps_", "");
+      const userChoice = interaction.customId.split(":")[1];
       const choices = ["حجر", "ورقة", "مقص"];
-      const botChoice = choices[Math.floor(Math.random() * 3)];
+      const botChoice = randomItem(choices);
 
-      let result;
+      let result = "تعادل!";
 
-      if (userChoice === botChoice) {
-        result = "تعادل!";
-      } else if (
-        (userChoice === "حجر" && botChoice === "مقص") ||
-        (userChoice === "ورقة" && botChoice === "حجر") ||
-        (userChoice === "مقص" && botChoice === "ورقة")
-      ) {
-        result = "🏆 فزت! +10 نقاط";
-        reward(interaction.user.id, 10);
-      } else {
-        result = "حظ أوفر المرة القادمة!";
+      if (userChoice !== botChoice) {
+        const won =
+          (userChoice === "حجر" && botChoice === "مقص") ||
+          (userChoice === "ورقة" && botChoice === "حجر") ||
+          (userChoice === "مقص" && botChoice === "ورقة");
+
+        if (won) {
+          result = "🏆 فزت! +10 نقاط";
+          reward(interaction.user.id, 10);
+        } else {
+          result = "حظ أوفر في المرة القادمة!";
+        }
       }
 
       return interaction.reply({
         embeds: [
-          embed(
-            "✂️ حجر ورقة مقص",
+          makeEmbed(
+            db.names.rps,
             `اختيارك: **${userChoice}**\nاختيار البوت: **${botChoice}**\n\n${result}`
           )
         ],
@@ -848,46 +1085,49 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    // XO join
+    // XO JOIN
     if (
       interaction.isButton() &&
-      interaction.customId.startsWith("xo_join_")
+      interaction.customId.startsWith("xojoin:")
     ) {
-      const channelId = interaction.customId.replace("xo_join_", "");
-      const id = `xo_${channelId}`;
-      const game = activeGames.get(id);
+      const channelId = interaction.customId.split(":")[1];
+      const game = activeGames.get(`xo_${channelId}`);
 
-      if (!game || game.players.length !== 1) {
+      if (!game || game.players.length !== 1 || game.finished) {
         return interaction.reply({
           content: "المباراة غير متاحة.",
           ephemeral: true
         });
       }
 
-      if (interaction.user.id === game.players[0]) {
+      if (game.players.includes(interaction.user.id)) {
         return interaction.reply({
-          content: "لا يمكنك اللعب ضد نفسك.",
+          content: "أنت منضم بالفعل.",
           ephemeral: true
         });
       }
 
       game.players.push(interaction.user.id);
 
-      return interaction.reply({
-        content: `تم انضمامك للمباراة! ${interaction.user}`,
-        ephemeral: true
+      return interaction.update({
+        embeds: [
+          makeEmbed(
+            db.names.xo,
+            `❌ <@${game.players[0]}>\n⭕ <@${game.players[1]}>\n\nبدأت المباراة! دور اللاعب الأول.`
+          )
+        ],
+        components: xoRows(game)
       });
     }
 
-    // XO board
+    // XO MOVE
     if (
       interaction.isButton() &&
-      interaction.customId.startsWith("xo_xo_")
+      interaction.customId.startsWith("xo:")
     ) {
-      const parts = interaction.customId.split("_");
-      const id = `${parts[1]}_${parts[2]}_${parts[3]}`;
-      const position = Number(parts[4]);
-      const game = activeGames.get(id);
+      const [, channelId, indexText] = interaction.customId.split(":");
+      const game = activeGames.get(`xo_${channelId}`);
+      const index = Number(indexText);
 
       if (!game || game.finished || game.players.length !== 2) {
         return interaction.reply({
@@ -903,73 +1143,41 @@ client.on("interactionCreate", async interaction => {
         });
       }
 
-      if (game.board[position]) {
+      if (game.board[index]) {
         return interaction.reply({
-          content: "هذا المربع مستخدم.",
+          content: "المربع مستخدم.",
           ephemeral: true
         });
       }
 
-      game.board[position] = game.turn === 0 ? "❌" : "⭕";
+      game.board[index] = game.marks[game.turn];
 
-      const winLines = [
-        [0,1,2],[3,4,5],[6,7,8],
-        [0,3,6],[1,4,7],[2,5,8],
-        [0,4,8],[2,4,6]
-      ];
+      const winnerMark = xoWinner(game.board);
+      const draw = !winnerMark && game.board.every(Boolean);
 
-      const winner = winLines.some(line =>
-        line.every(index => game.board[index] === game.board[line[0]])
-      );
-
-      const draw = game.board.every(Boolean);
-
-      const rows = [];
-
-      for (let r = 0; r < 3; r++) {
-        const row = new ActionRowBuilder();
-
-        for (let c = 0; c < 3; c++) {
-          const pos = r * 3 + c;
-
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`xo_${id}_${pos}`)
-              .setLabel(game.board[pos] || " ")
-              .setStyle(
-                game.board[pos] === "❌"
-                  ? ButtonStyle.Danger
-                  : game.board[pos] === "⭕"
-                    ? ButtonStyle.Primary
-                    : ButtonStyle.Secondary
-              )
-              .setDisabled(!!game.board[pos] || winner || draw)
-          );
-        }
-
-        rows.push(row);
-      }
-
-      if (winner || draw) {
+      if (winnerMark || draw) {
         game.finished = true;
+        activeGames.delete(`xo_${channelId}`);
 
-        if (winner) {
-          const winnerId = interaction.user.id;
+        if (winnerMark) {
+          const winnerIndex = game.marks.indexOf(winnerMark);
+          const winnerId = game.players[winnerIndex];
           reward(winnerId, 20);
-        }
 
-        activeGames.delete(id);
+          return interaction.update({
+            embeds: [
+              makeEmbed(
+                db.names.xo,
+                `🏆 الفائز: <@${winnerId}>\n\nحصل على 20 نقطة!`
+              )
+            ],
+            components: xoRows(game)
+          });
+        }
 
         return interaction.update({
-          embeds: [
-            embed(
-              "❌ XO",
-              winner
-                ? `🏆 الفائز: ${interaction.user}\n+20 نقطة`
-                : "🤝 تعادل!"
-            )
-          ],
-          components: rows
+          embeds: [makeEmbed(db.names.xo, "🤝 انتهت المباراة بالتعادل!")],
+          components: xoRows(game)
         });
       }
 
@@ -977,32 +1185,39 @@ client.on("interactionCreate", async interaction => {
 
       return interaction.update({
         embeds: [
-          embed(
-            "❌ XO",
-            `دور اللاعب: <@${game.players[game.turn]}>\n❌ ضد ⭕`
+          makeEmbed(
+            db.names.xo,
+            `❌ <@${game.players[0]}>\n⭕ <@${game.players[1]}>\n\nدور: <@${game.players[game.turn]}>`
           )
         ],
-        components: rows
+        components: xoRows(game)
       });
     }
 
   } catch (error) {
-    console.error(error);
+    console.error("Interaction error:", error);
 
     if (!interaction.replied && !interaction.deferred) {
       interaction.reply({
-        content: "حدث خطأ. حاول مرة أخرى.",
+        content: "حدث خطأ أثناء تنفيذ العملية.",
         ephemeral: true
       }).catch(() => {});
     }
   }
 });
 
+// ==========================================
+// READY
+// ==========================================
+
 client.once("ready", () => {
-  console.log(`✅ ${client.user.tag} MAIN GAMES ONLINE`);
+  console.log("--------------------------------");
+  console.log("✅ MAIN GAMES ONLINE");
+  console.log(`🤖 ${client.user.tag}`);
+  console.log("--------------------------------");
 
   client.user.setPresence({
-    activities: [{ name: "MAIN Games 🎮" }],
+    activities: [{ name: "MAIN GAMES 🎮" }],
     status: "online"
   });
 });
