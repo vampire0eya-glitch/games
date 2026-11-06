@@ -1,7 +1,7 @@
-
 {
   "name": "main-games",
   "version": "2.0.0",
+  "description": "MAIN GAMES Discord Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
